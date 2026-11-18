@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Gets a factory-fresh Mac to the point where the rest of setup can run:
-# Homebrew, then Node 18+. Everything downstream (the MCP build, the harness
+# Homebrew, then the supported Node 24 runtime. Everything downstream (the MCP build, the harness
 # CLIs' config writers, the settings merge) needs Node, so this step is fatal
 # if it cannot produce one.
 #
@@ -59,38 +59,19 @@ if command -v brew >/dev/null 2>&1; then
   fi
 fi
 
-# --- Node 18+ ---
-node_ok() {
-  command -v node >/dev/null 2>&1 || return 1
-  local major
-  major="$(node -e 'process.stdout.write(String(process.versions.node.split(".")[0]))' 2>/dev/null)" || return 1
-  [ "$major" -ge 18 ]
-}
-
-if ! node_ok; then
-  if command -v node >/dev/null 2>&1; then
-    warn "Node $(node --version) is too old — Halo needs 18+"
-  else
-    log "Node not found"
-  fi
-
-  if ! command -v brew >/dev/null 2>&1; then
-    err "cannot install Node without Homebrew — install Node 18+ from https://nodejs.org and re-run"
-    exit 1
-  fi
-
-  log "installing Node via Homebrew"
-  run brew install node || true
-
-  if [ "${DRY_RUN:-0}" != "1" ] && ! node_ok; then
-    err "Node 18+ still unavailable after 'brew install node'"
-    err "  If you use nvm/fnm/asdf, activate a Node 18+ version and re-run."
+# --- Node 24 (independent of the system-wide Node version) ---
+resolve_halo_node
+if [ ! -x "$HALO_NODE" ] || [ ! -x "$HALO_NPM" ]; then
+  log "installing Halo's Node 24 runtime via Homebrew"
+  if ! run brew install node@24; then
+    err "could not install node@24; fix the Homebrew error and re-run setup"
     exit 1
   fi
 fi
+use_halo_node
 
-if [ "${DRY_RUN:-0}" = "1" ] && ! node_ok; then
-  log "prerequisites would be installed (node not present under dry-run)"
+if [ "${DRY_RUN:-0}" = "1" ]; then
+  log "would use $HALO_NODE for Halo's build and MCP registrations"
 else
-  log "prerequisites ok (node $(node --version), $(brew --version 2>/dev/null | head -1))"
+  log "prerequisites ok (Halo node $("$HALO_NODE" --version))"
 fi

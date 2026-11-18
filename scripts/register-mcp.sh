@@ -10,6 +10,9 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 . "$REPO/scripts/common.sh"
+DRY_RUN="${DRY_RUN:-0}"
+
+use_halo_node
 
 VAULT_PATH="${VAULT_PATH:-$HOME/Documents/brain}"
 SERVER_JS="$REPO/mcp/memory-layer/dist/server.js"
@@ -28,6 +31,13 @@ if [ ! -f "$SERVER_JS" ]; then
   exit 1
 fi
 
+# Check native loading before removing any working MCP registrations.
+if [ "$DRY_RUN" = "1" ]; then
+  log "would verify memory-layer native dependencies with $HALO_NODE"
+else
+  "$HALO_NODE" "$REPO/mcp/memory-layer/scripts/check-native.mjs"
+fi
+
 # --- Claude Code ---
 if command -v claude >/dev/null 2>&1; then
   # Re-adding is the idempotent update path; remove is allowed to fail when
@@ -35,7 +45,7 @@ if command -v claude >/dev/null 2>&1; then
   run claude mcp remove --scope user "$LEGACY_NAME" >/dev/null 2>&1 || true
   run claude mcp remove --scope user "$SERVER_NAME" >/dev/null 2>&1 || true
   # Name before -e: --env is variadic and would swallow a trailing name.
-  run claude mcp add --scope user "$SERVER_NAME" -e "VAULT_PATH=$VAULT_PATH" -- node "$SERVER_JS"
+  run claude mcp add --scope user "$SERVER_NAME" -e "VAULT_PATH=$VAULT_PATH" -- "$HALO_NODE" "$SERVER_JS"
   log "registered $SERVER_NAME MCP with Claude Code (user scope), store: $VAULT_PATH"
 
   # A legacy entry in ~/.claude/mcp.json would shadow or duplicate this one.
@@ -55,7 +65,7 @@ if command -v claude >/dev/null 2>&1; then
     printf '\033[2m[dry-run]\033[0m allow mcp__%s__* in %s\n' "$SERVER_NAME" "$HOME/.claude/settings.json"
   else
     run mkdir -p "$HOME/.claude"
-    node "$REPO/scripts/merge-claude-settings.mjs" --permissions "$HOME/.claude/settings.json"
+    "$HALO_NODE" "$REPO/scripts/merge-claude-settings.mjs" --permissions "$HOME/.claude/settings.json"
   fi
 else
   warn "claude CLI not found — skipping Claude Code registration"
@@ -65,7 +75,7 @@ fi
 if command -v codex >/dev/null 2>&1; then
   run codex mcp remove "$LEGACY_NAME" >/dev/null 2>&1 || true
   run codex mcp remove "$SERVER_NAME" >/dev/null 2>&1 || true
-  run codex mcp add "$SERVER_NAME" --env "VAULT_PATH=$VAULT_PATH" -- node "$SERVER_JS"
+  run codex mcp add "$SERVER_NAME" --env "VAULT_PATH=$VAULT_PATH" -- "$HALO_NODE" "$SERVER_JS"
   log "registered $SERVER_NAME MCP with Codex, store: $VAULT_PATH"
 
   # Without this, every vault tool call opens an "Allow the memory-layer MCP
@@ -75,7 +85,7 @@ if command -v codex >/dev/null 2>&1; then
   if [ "$DRY_RUN" = "1" ]; then
     printf '\033[2m[dry-run]\033[0m set [mcp_servers.%s].default_tools_approval_mode\n' "$SERVER_NAME"
   else
-    node "$REPO/scripts/merge-codex-config.mjs" --mcp-approval "$HOME/.codex/config.toml"
+    "$HALO_NODE" "$REPO/scripts/merge-codex-config.mjs" --mcp-approval "$HOME/.codex/config.toml"
   fi
 
   # `codex mcp remove` drops [mcp_servers.obsidian] but not the per-tool
@@ -87,12 +97,12 @@ else
   warn "codex CLI not found — when Codex is installed, register with:"
   cat >&2 <<EOF
 
-  codex mcp add $SERVER_NAME --env VAULT_PATH=$VAULT_PATH -- node $SERVER_JS
+  codex mcp add "$SERVER_NAME" --env "VAULT_PATH=$VAULT_PATH" -- "$HALO_NODE" "$SERVER_JS"
 
   or add to ~/.codex/config.toml:
 
   [mcp_servers.$SERVER_NAME]
-  command = "node"
+  command = "$HALO_NODE"
   args = ["$SERVER_JS"]
   env = { VAULT_PATH = "$VAULT_PATH" }
 

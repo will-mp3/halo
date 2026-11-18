@@ -23,16 +23,18 @@ for arg in "$@"; do
 done
 [ "$DRY_RUN" = "1" ] && log "dry run — no changes will be made"
 
-# --- 1. Prerequisites: Homebrew and Node, installed if missing ---
+# --- 1. Prerequisites: Homebrew and the supported Node major ---
 # Sourced, not executed, so the brew PATH it sets reaches the later steps.
 . "$REPO/scripts/bootstrap-deps.sh"
 
 # --- 2. Build the MCP server ---
 log "building MCP server"
 if [ "$DRY_RUN" = "1" ]; then
-  printf '\033[2m[dry-run]\033[0m npm install && npm run build (in mcp/memory-layer)\n'
+  printf '\033[2m[dry-run]\033[0m Node 24: npm ci && npm run build && npm run check:native (in mcp/memory-layer)\n'
 else
-  (cd "$REPO/mcp/memory-layer" && npm install --no-fund --no-audit --silent && npm run build --silent)
+  # A clean locked install also replaces native binaries from an older runtime.
+  (cd "$REPO/mcp/memory-layer" && "$HALO_NPM" ci --no-fund --no-audit && \
+    "$HALO_NPM" run build && "$HALO_NPM" run check:native)
 fi
 
 # --- 3. Ollama (never fatal) ---

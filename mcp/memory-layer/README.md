@@ -10,7 +10,7 @@ pointed `VAULT_PATH` at".
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 24 (LTS); Halo setup uses Homebrew's versioned `node@24` runtime
 - [Ollama](https://ollama.com) running locally with `embeddinggemma` pulled (optional — server works without it, FTS-only mode)
 
 ```bash
@@ -20,9 +20,27 @@ ollama pull embeddinggemma
 ## Setup
 
 ```bash
-npm install
-npm run build
+cd /path/to/halo
+./setup.sh --skip-ollama
 ```
+
+This installs the locked dependencies under Node 24, builds the server, checks
+SQLite/FTS/vector loading in memory, and registers the same runtime with the agents.
+It leaves the system-wide Node selection unchanged. To build just this package
+after installing `node@24`:
+
+```bash
+export PATH="$(brew --prefix node@24)/bin:$PATH"
+cd /path/to/halo/mcp/memory-layer
+npm ci
+npm run build
+npm run check:native
+```
+
+The package enforces Node 24 through `engines` and `.npmrc`; `.node-version` also
+records the major for version managers. Use the versioned runtime's absolute path
+in MCP registration, not `node` from PATH. Find it with `brew --prefix node@24` and
+append `/bin/node` (normally `/opt/homebrew/opt/node@24/bin/node` on Apple Silicon).
 
 ### Register with Claude Code
 
@@ -32,7 +50,7 @@ Add the server to your MCP configuration. Create a `.mcp.json` file in your proj
 {
   "mcpServers": {
     "memory-layer": {
-      "command": "node",
+      "command": "/opt/homebrew/opt/node@24/bin/node",
       "args": ["/absolute/path/to/halo/mcp/memory-layer/dist/server.js"],
       "env": {
         "VAULT_PATH": "/absolute/path/to/your/markdown/store"
@@ -42,14 +60,15 @@ Add the server to your MCP configuration. Create a `.mcp.json` file in your proj
 }
 ```
 
-For development, you can use `tsx` to run TypeScript directly without building:
+For development, use the same absolute Node 24 path with `tsx` to run TypeScript
+directly without building:
 
 ```json
 {
   "mcpServers": {
     "memory-layer": {
-      "command": "npx",
-      "args": ["tsx", "/absolute/path/to/halo/mcp/memory-layer/src/server.ts"],
+      "command": "/opt/homebrew/opt/node@24/bin/node",
+      "args": ["--import", "/absolute/path/to/halo/mcp/memory-layer/node_modules/tsx/dist/loader.mjs", "/absolute/path/to/halo/mcp/memory-layer/src/server.ts"],
       "env": {
         "VAULT_PATH": "/absolute/path/to/your/markdown/store"
       }
@@ -62,6 +81,8 @@ For development, you can use `tsx` to run TypeScript directly without building:
 - Use absolute paths for both the server script and `VAULT_PATH`
 - `VAULT_PATH` must point to an existing directory — the server will exit immediately if it is missing or invalid
 - One server instance per store
+- Restart existing agent sessions after changing the registered runtime; existing
+  server processes retain the runtime they started with.
 
 ### Configuration
 
@@ -76,8 +97,12 @@ After configuring, restart your agent. The server should appear in the MCP tools
 
 1. `VAULT_PATH` is set and points to an existing directory
 2. The path to the server script is correct and absolute
-3. `npm install` (and `npm run build` if using compiled mode) has been run in this directory
-4. Node.js 18+ is available
+3. `npm ci`, `npm run build`, and `npm run check:native` succeed under Node 24
+4. The configured absolute Node 24 executable exists
+
+For a `NODE_MODULE_VERSION` mismatch, rerun Halo's setup and restart the agents.
+Do not rebuild against an unrelated Node version on PATH. Reinstalling the package
+dependencies does not delete notes or reset the vault's SQLite index.
 
 ## Tools
 

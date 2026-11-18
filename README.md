@@ -19,8 +19,8 @@ cd halo
 
 That's it. The script is idempotent, re-run it any time. It will:
 
-1. Install Homebrew and Node 18+ if they're missing (git you already have since you cloned this)
-2. Build the MCP server
+1. Install Homebrew and its versioned `node@24` runtime if missing (git is already needed to clone)
+2. Install locked MCP dependencies, build the server, and check SQLite/FTS/vector loading
 3. Install Ollama, install a launchd agent that keeps it running, and pull the embedding model
    (never fatal; search degrades to FTS-only without it)
 4. Symlink every skill into `~/.claude/skills` (Claude Code) and `~/.agents/skills` (Codex)
@@ -43,6 +43,21 @@ VAULT_PATH=/path/to/vault ./setup.sh      # non-default vault location (default:
 ```
 
 After setup, restart your agent sessions to pick up the MCP server. Skills and instructions update on `git pull` alone; re-run `setup.sh` only when the MCP server code changes.
+
+Halo builds and registers memory-layer using Homebrew's absolute `node@24` path.
+Its Node runtime is independent of the default `node` used by other projects.
+Patch updates within Node 24 remain available through Homebrew; changing Halo's
+Node major requires updating its runtime selection, package engine, and native
+dependencies together. A runtime upgrade in another project must not change the
+runtime used to launch memory-layer.
+
+If a tool reports `NODE_MODULE_VERSION` incompatibility, run `./setup.sh --skip-ollama`
+and restart your agent sessions. Setup uses `npm ci` to replace installed native
+binaries under Node 24 and checks them before updating MCP registrations. It does
+not reset the vault or rebuild its index. Regression tests for runtime selection
+run with `python3 -m unittest discover -s tests -v`. After building, exercise MCP
+write/search against a temporary vault with
+`"$(brew --prefix node@24)/bin/node" tests/smoke-memory-layer.mjs`.
 
 ## Layout
 
